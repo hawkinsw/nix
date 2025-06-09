@@ -923,6 +923,9 @@ pub enum ControlMessageOwned {
     #[cfg(any(target_os = "linux"))]
     TlsGetRecordType(TlsGetRecordType),
 
+    /// TODO
+    Ipv6ExtHeader(Ipv6ExtHeader),
+
     /// Catch-all variant for unimplemented cmsg types.
     Unknown(UnknownCmsg),
 }
@@ -1137,6 +1140,16 @@ impl ControlMessageOwned {
                 let tc = unsafe { ptr::read_unaligned(p as *const i32) };
                 ControlMessageOwned::Ipv6TClass(tc)
             },
+            #[cfg(any(linux_android))]
+            #[cfg(feature = "net")]
+            (libc::IPPROTO_IPV6, header_type @ libc::IPV6_DSTOPTS) | (libc::IPPROTO_IPV6, header_type @ libc::IPV6_HOPOPTS) => {
+                let sl = unsafe { std::slice::from_raw_parts(p, len) };
+                let header = Ipv6ExtHeader {
+                    header_type: if header_type == libc::IPV6_DSTOPTS { Ipv6ExtHeaderType::Dst } else { Ipv6ExtHeaderType::HopByHop },
+                    header_data: Vec::<u8>::from(&sl[2..]),
+                };
+                ControlMessageOwned::Ipv6ExtHeader(header)
+            },
             (_, _) => {
                 let sl = unsafe { std::slice::from_raw_parts(p, len) };
                 let ucmsg = UnknownCmsg {
@@ -1333,6 +1346,28 @@ pub enum ControlMessage<'a> {
     #[cfg(feature = "net")]
     #[cfg_attr(docsrs, doc(cfg(feature = "net")))]
     Ipv6TClass(&'a i32),
+
+    /// Configure IPv6 Extension Headers for outgoing v6 packets.
+    #[cfg(any(linux_android))]
+    #[cfg(feature = "net")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "net")))]
+    Ipv6ExtHeader(&'a Ipv6ExtHeader),
+}
+
+/// Header types for IPv6 Extension Headers
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Ipv6ExtHeaderType {
+    HopByHop,
+    Dst,
+}
+
+/// TODO
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Ipv6ExtHeader {
+    /// TODO
+    pub header_type: Ipv6ExtHeaderType,
+    /// TODO
+    pub header_data: Vec<u8>
 }
 
 /// Control messages that are currently not supported by Nix.
@@ -1457,6 +1492,24 @@ impl ControlMessage<'_> {
             ControlMessage::Ipv6TClass(tclass) => {
                 tclass as *const _ as *const u8
             },
+            #[cfg(any(linux_android, target_os = "freebsd"))]
+            #[cfg(feature = "net")]
+            ControlMessage::Ipv6ExtHeader(ext) => {
+                let ext_header = [ ext.header_type as u8, ((ext.header_data.len() + 8 ) / 8 - 1) as u8];
+                unsafe {
+                    ptr::copy_nonoverlapping(
+                        ext_header.as_ptr(),
+                        cmsg_data,
+                        ext_header.len()
+                    );
+                    ptr::copy_nonoverlapping(
+                        ext.header_data.as_ptr(),
+                        cmsg_data.add(2),
+                        ext.header_data.len()
+                    );
+                };
+                return;
+            },
         };
         unsafe {
             ptr::copy_nonoverlapping(
@@ -1536,6 +1589,12 @@ impl ControlMessage<'_> {
             ControlMessage::Ipv6TClass(tclass) => {
                 mem::size_of_val(tclass)
             },
+            #[cfg(any(linux_android, target_os = "freebsd"))]
+            #[cfg(feature = "net")]
+            ControlMessage::Ipv6ExtHeader(ext) => {
+                let aligned_len = (((ext.header_data.len() + 8) / 8) * 8) + 2;// Add two for type (one byte) and len (another byte)
+                mem::size_of::<u8>()*(aligned_len)
+            },
         }
     }
 
@@ -1579,6 +1638,9 @@ impl ControlMessage<'_> {
             #[cfg(any(linux_android, target_os = "freebsd"))]
             #[cfg(feature = "net")]
             ControlMessage::Ipv6TClass(_) => libc::IPPROTO_IPV6,
+            #[cfg(any(linux_android, target_os = "freebsd"))]
+            #[cfg(feature = "net")]
+            ControlMessage::Ipv6ExtHeader(_) => libc::IPPROTO_IPV6,
         }
     }
 
@@ -1640,6 +1702,14 @@ impl ControlMessage<'_> {
             #[cfg(feature = "net")]
             ControlMessage::Ipv6TClass(_) => {
                 libc::IPV6_TCLASS
+            },
+            #[cfg(any(linux_android, target_os = "freebsd"))]
+            #[cfg(feature = "net")]
+            ControlMessage::Ipv6ExtHeader(ext) => {
+                match ext.header_type {
+                    Ipv6ExtHeaderType::HopByHop => libc::IPV6_2292HOPOPTS,
+                    Ipv6ExtHeaderType::Dst => libc::IPV6_2292DSTOPTS,
+                }
             },
         }
     }
