@@ -943,6 +943,13 @@ pub enum ControlMessageOwned {
     #[cfg(any(target_os = "linux"))]
     TlsGetRecordType(TlsGetRecordType),
 
+<<<<<<< Updated upstream
+=======
+    /// TODO
+    #[cfg(any(target_os = "linux", target_os="freebsd"))]
+    Ipv6ExtHeader(Ipv6ExtHeader),
+
+>>>>>>> Stashed changes
     /// Catch-all variant for unimplemented cmsg types.
     Unknown(UnknownCmsg),
 }
@@ -1157,6 +1164,19 @@ impl ControlMessageOwned {
                 let tc = unsafe { ptr::read_unaligned(p as *const i32) };
                 ControlMessageOwned::Ipv6TClass(tc)
             },
+<<<<<<< Updated upstream
+=======
+            #[cfg(any(linux_android, target_os = "freebsd"))]
+            #[cfg(feature = "net")]
+            (libc::IPPROTO_IPV6, header_type @ libc::IPV6_DSTOPTS) | (libc::IPPROTO_IPV6, header_type @ libc::IPV6_HOPOPTS) => {
+                let sl = unsafe { std::slice::from_raw_parts(p, len) };
+                let header = Ipv6ExtHeader {
+                    header_type: if header_type == libc::IPV6_DSTOPTS { Ipv6ExtHeaderType::Dst } else { Ipv6ExtHeaderType::HopByHop },
+                    header_data: Vec::<u8>::from(&sl[2..]),
+                };
+                ControlMessageOwned::Ipv6ExtHeader(header)
+            },
+>>>>>>> Stashed changes
             (_, _) => {
                 let sl = unsafe { std::slice::from_raw_parts(p, len) };
                 let ucmsg = UnknownCmsg {
@@ -1353,6 +1373,31 @@ pub enum ControlMessage<'a> {
     #[cfg(feature = "net")]
     #[cfg_attr(docsrs, doc(cfg(feature = "net")))]
     Ipv6TClass(&'a i32),
+<<<<<<< Updated upstream
+=======
+
+    /// Configure IPv6 Extension Headers for outgoing v6 packets.
+    #[cfg(any(linux_android, target_os = "freebsd"))]
+    #[cfg(feature = "net")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "net")))]
+    Ipv6ExtHeader(&'a Ipv6ExtHeader),
+}
+
+/// Header types for IPv6 Extension Headers
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Ipv6ExtHeaderType {
+    HopByHop,
+    Dst,
+}
+
+/// TODO
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Ipv6ExtHeader {
+    /// TODO
+    pub header_type: Ipv6ExtHeaderType,
+    /// TODO
+    pub header_data: Vec<u8>
+>>>>>>> Stashed changes
 }
 
 /// Control messages that are currently not supported by Nix.
@@ -1479,6 +1524,30 @@ impl ControlMessage<'_> {
             ControlMessage::Ipv6TClass(tclass) => {
                 tclass as *const _ as *const u8
             },
+<<<<<<< Updated upstream
+=======
+            #[cfg(any(linux_android, target_os = "freebsd"))]
+            #[cfg(feature = "net")]
+            ControlMessage::Ipv6ExtHeader(ext) => {
+                //let ext_header = [ 0x00 /*ext.header_type as u8 */, ((ext.header_data.len() + 7 + 2) / 8 - 1) as u8];
+                let ext_header = [ 0x0, ((ext.header_data.len() + 7 + 2) / 8 - 1) as u8];
+                println!("ext_header: {:x?}", ext_header);
+                unsafe {
+                    ptr::copy_nonoverlapping(
+                        ext_header.as_ptr(),
+                        cmsg_data,
+                        ext_header.len()
+                    );
+                    ptr::copy_nonoverlapping(
+                        ext.header_data.as_ptr(),
+                        cmsg_data.add(2),
+                        ext.header_data.len()
+                    );
+                    println!("data: {:x?}", cmsg_data);
+                };
+                return;
+            },
+>>>>>>> Stashed changes
         };
         unsafe {
             ptr::copy_nonoverlapping(
@@ -1557,6 +1626,12 @@ impl ControlMessage<'_> {
             #[cfg(feature = "net")]
             ControlMessage::Ipv6TClass(tclass) => {
                 mem::size_of_val(tclass)
+            },
+            #[cfg(any(linux_android, target_os = "freebsd"))]
+            #[cfg(feature = "net")]
+            ControlMessage::Ipv6ExtHeader(ext) => {
+                let aligned_len = ((ext.header_data.len() + 7 + 2) / 8) * 8; // Add two for type (one byte) and len (another byte)
+                mem::size_of::<u8>()*(aligned_len)
             },
         }
     }
@@ -1663,6 +1738,17 @@ impl ControlMessage<'_> {
             ControlMessage::Ipv6TClass(_) => {
                 libc::IPV6_TCLASS
             },
+<<<<<<< Updated upstream
+=======
+            #[cfg(any(linux_android, target_os = "freebsd"))]
+            #[cfg(feature = "net")]
+            ControlMessage::Ipv6ExtHeader(ext) => {
+                match ext.header_type {
+                    Ipv6ExtHeaderType::HopByHop => libc::IPV6_HOPOPTS,
+                    Ipv6ExtHeaderType::Dst => libc::IPV6_DSTOPTS,
+                }
+            },
+>>>>>>> Stashed changes
         }
     }
 

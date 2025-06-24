@@ -1154,6 +1154,27 @@ sockopt_impl!(
     libc::SO_TXTIME,
     libc::sock_txtime
 );
+
+#[cfg(any(target_os = "linux", target_os="freebsd"))]
+sockopt_impl!(
+    /// Documentation
+    Ipv6DstOpts,
+    Both,
+    libc::IPPROTO_IPV6,
+    libc::IPV6_RECVDSTOPTS,
+    bool
+);
+
+#[cfg(any(target_os = "linux", target_os="freebsd"))]
+sockopt_impl!(
+    /// Documentation
+    Ipv6HopOpts,
+    Both,
+    libc::IPPROTO_IPV6,
+    libc::IPV6_RECVHOPOPTS,
+    bool
+);
+
 #[cfg(any(linux_android, target_os = "fuchsia"))]
 sockopt_impl!(
     /// Indicates that an unsigned 32-bit value ancillary message (cmsg) should
