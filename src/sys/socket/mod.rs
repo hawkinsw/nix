@@ -259,8 +259,11 @@ impl SockProtocol {
     #[cfg(linux_android)]
     #[allow(non_upper_case_globals)]
     #[cfg(target_endian = "little")]
-    pub const EthIp: SockProtocol = unsafe { std::mem::transmute::<i32, SockProtocol>((libc::ETH_P_IP as u16).to_be() as i32) };
-
+    pub const EthIp: SockProtocol = unsafe {
+        std::mem::transmute::<i32, SockProtocol>(
+            (libc::ETH_P_IP as u16).to_be() as i32,
+        )
+    };
 }
 #[cfg(linux_android)]
 libc_bitflags! {
@@ -1167,7 +1170,7 @@ impl ControlMessageOwned {
                 let sl = unsafe { std::slice::from_raw_parts(p, len) };
                 let header = Ipv6ExtHeader {
                     header_type: if header_type == libc::IPV6_DSTOPTS { Ipv6ExtHeaderType::Dst } else { Ipv6ExtHeaderType::HopByHop },
-                    header_data: Vec::<u8>::from(&sl[2..]),
+                    header_body: Vec::<u8>::from(&sl[2..]),
                 };
                 ControlMessageOwned::Ipv6ExtHeader(header)
             },
@@ -1388,7 +1391,7 @@ pub struct Ipv6ExtHeader {
     /// TODO
     pub header_type: Ipv6ExtHeaderType,
     /// TODO
-    pub header_data: Vec<u8>
+    pub header_body: Vec<u8>
 }
 
 /// Control messages that are currently not supported by Nix.
@@ -1518,21 +1521,20 @@ impl ControlMessage<'_> {
             #[cfg(any(linux_android, target_os = "freebsd"))]
             #[cfg(feature = "net")]
             ControlMessage::Ipv6ExtHeader(ext) => {
-                //let ext_header = [ 0x00 /*ext.header_type as u8 */, ((ext.header_data.len() + 7 + 2) / 8 - 1) as u8];
-                let ext_header = [ 0x0, ((ext.header_data.len() + 7 + 2) / 8 - 1) as u8];
-                println!("ext_header: {:x?}", ext_header);
+                const EXT_HEADER_LEN_ALIGNMENT: usize = 8;
+                let extension_header_aligned_len = ((ext.header_body.len() + (EXT_HEADER_LEN_ALIGNMENT - 1)) / EXT_HEADER_LEN_ALIGNMENT) - 1;
+                let extension_header_header = [ 0x0,  extension_header_aligned_len as u8];
                 unsafe {
                     ptr::copy_nonoverlapping(
-                        ext_header.as_ptr(),
+                        extension_header_header.as_ptr(),
                         cmsg_data,
-                        ext_header.len()
+                        extension_header_header.len()
                     );
                     ptr::copy_nonoverlapping(
-                        ext.header_data.as_ptr(),
+                        ext.header_body.as_ptr(),
                         cmsg_data.add(2),
-                        ext.header_data.len()
+                        ext.header_body.len()
                     );
-                    println!("data: {:x?}", cmsg_data);
                 };
                 return;
             },
@@ -1618,8 +1620,7 @@ impl ControlMessage<'_> {
             #[cfg(any(linux_android, target_os = "freebsd"))]
             #[cfg(feature = "net")]
             ControlMessage::Ipv6ExtHeader(ext) => {
-                let aligned_len = ((ext.header_data.len() + 7 + 2) / 8) * 8; // Add two for type (one byte) and len (another byte)
-                mem::size_of::<u8>()*(aligned_len)
+                mem::size_of::<u8>()*(ext.header_body.len() + 2)
             },
         }
     }
