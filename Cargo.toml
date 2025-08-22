@@ -108,3 +108,6 @@ path = "test/test_clearenv.rs"
 [[test]]
 name = "test-prctl"
 path = "test/sys/test_prctl.rs"
+
+[lints.rust]
+mismatched-lifetime-syntaxes = "allow"
